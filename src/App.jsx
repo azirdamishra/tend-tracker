@@ -744,19 +744,74 @@ function AddExpenseTab({ categories, currency, editingExpense, inventory, invent
 }
 
 // ---------- Categories ----------
+// A color dot that expands into the palette row on click, instead of
+// showing all 8 swatches per category at all times.
+function CategorySwatch({ color, onPick }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Change color"
+        title="Change color"
+        style={{ width: 22, height: 22, borderRadius: '50%', background: color, boxShadow: `0 0 0 1px ${C.line}`, border: `2px solid ${C.card}`, cursor: 'pointer', flexShrink: 0 }}
+      />
+    );
+  }
+  return (
+    <div className="flex items-center gap-1">
+      {PALETTE.map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => { onPick(p); setOpen(false); }}
+          aria-label={`Set color ${p}`}
+          style={{ width: 18, height: 18, borderRadius: '50%', background: p, border: color === p ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CategoryCard({ category, onUpdate, onDelete, onAddSub, onDeleteSub }) {
+  return (
+    <div className="tend-card">
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
+          <CategorySwatch color={category.color} onPick={(color) => onUpdate({ color })} />
+          <input
+            value={category.name}
+            onChange={(e) => onUpdate({ name: e.target.value })}
+            style={{ fontWeight: 600, fontSize: 16, border: 'none', background: 'transparent', outline: 'none', minWidth: 0 }}
+          />
+          <span style={{ fontSize: 12, color: C.inkSoft, flexShrink: 0 }}>
+            {category.subs.length} sub{category.subs.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <ConfirmDelete onConfirm={onDelete} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 14 }}>
+        {category.subs.map((s) => (
+          <span key={s.id} className="tend-chip" style={{ cursor: 'default' }}>
+            {s.name}
+            <button onClick={() => onDeleteSub(s.id)} className="tend-iconbtn" style={{ padding: 0 }} aria-label={`Remove ${s.name}`}>
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+        <QuickAddChip placeholder="Subcategory name" onAdd={onAddSub} />
+      </div>
+    </div>
+  );
+}
+
 function CategoriesTab({ categories, onChange, onAddCategory, onAddSub, onReset }) {
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
-  const [subInputs, setSubInputs] = useState({});
 
   function updateCategory(id, patch) { onChange(categories.map((c) => (c.id === id ? { ...c, ...patch } : c))); }
   function deleteCategory(id) { onChange(categories.filter((c) => c.id !== id)); }
-  function addSub(catId) {
-    const text = (subInputs[catId] || '').trim();
-    if (!text) return;
-    onAddSub(catId, text);
-    setSubInputs((prev) => ({ ...prev, [catId]: '' }));
-  }
   function deleteSub(catId, subId) {
     onChange(categories.map((c) => (c.id === catId ? { ...c, subs: c.subs.filter((s) => s.id !== subId) } : c)));
   }
@@ -769,59 +824,29 @@ function CategoriesTab({ categories, onChange, onAddCategory, onAddSub, onReset 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 13, color: C.inkSoft }}>
+        {categories.length} categor{categories.length === 1 ? 'y' : 'ies'} — colors and subcategories carry through Overview, Add, and History
+      </div>
+
       {categories.map((c) => (
-        <div key={c.id} className="tend-card">
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1">
-                {PALETTE.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => updateCategory(c.id, { color: p })}
-                    aria-label={`Set color ${p}`}
-                    style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? `2px solid ${C.ink}` : '1px solid transparent', cursor: 'pointer' }}
-                  />
-                ))}
-              </div>
-              <input
-                value={c.name}
-                onChange={(e) => updateCategory(c.id, { name: e.target.value })}
-                style={{ fontWeight: 600, fontSize: 16, border: 'none', background: 'transparent', outline: 'none' }}
-              />
-            </div>
-            <ConfirmDelete onConfirm={() => deleteCategory(c.id)} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 14 }}>
-            {c.subs.map((s) => (
-              <span key={s.id} className="tend-chip" style={{ cursor: 'default' }}>
-                {s.name}
-                <button onClick={() => deleteSub(c.id, s.id)} className="tend-iconbtn" style={{ padding: 0 }} aria-label={`Remove ${s.name}`}>
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-            <input
-              className="tend-input"
-              style={{ width: 180 }}
-              placeholder="Add subcategory + Enter"
-              value={subInputs[c.id] || ''}
-              onChange={(e) => setSubInputs((prev) => ({ ...prev, [c.id]: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === 'Enter') addSub(c.id); }}
-            />
-          </div>
-        </div>
+        <CategoryCard
+          key={c.id}
+          category={c}
+          onUpdate={(patch) => updateCategory(c.id, patch)}
+          onDelete={() => deleteCategory(c.id)}
+          onAddSub={(name) => onAddSub(c.id, name)}
+          onDeleteSub={(subId) => deleteSub(c.id, subId)}
+        />
       ))}
 
-      <div className="tend-card">
+      <div className="tend-card" style={{ borderStyle: 'dashed' }}>
         <div style={{ fontWeight: 600, marginBottom: 12 }}>New category</div>
         <div className="flex flex-wrap items-center gap-3">
+          <CategorySwatch color={newCatColor} onPick={setNewCatColor} />
           <input className="tend-input" style={{ width: 200 }} placeholder="e.g. Books" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }} />
-          <div className="flex gap-1">
-            {PALETTE.map((p) => (
-              <button key={p} onClick={() => setNewCatColor(p)} style={{ width: 18, height: 18, borderRadius: 4, background: p, border: newCatColor === p ? `2px solid ${C.ink}` : '1px solid transparent', cursor: 'pointer' }} />
-            ))}
-          </div>
-          <button className="tend-btn tend-btn-primary" onClick={addCategory}><Plus size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Add category</button>
+          <button className="tend-btn tend-btn-primary" onClick={addCategory} disabled={!newCatName.trim()}>
+            <Plus size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Add category
+          </button>
         </div>
       </div>
 
