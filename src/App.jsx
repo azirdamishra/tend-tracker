@@ -30,8 +30,7 @@ const TAGS = [
 const DEFAULT_CATEGORIES = [
   { id: 'shopping', name: 'Shopping', color: '#5B3A57', subs: [
     { id: 'clothes', name: 'Clothes' }, { id: 'beauty', name: 'Beauty' },
-    { id: 'maintenance', name: 'Maintenance' }, { id: 'shoes', name: 'Shoes' },
-    { id: 'accessories', name: 'Accessories' },
+    { id: 'shoes', name: 'Shoes' }, { id: 'accessories', name: 'Accessories' },
   ]},
   { id: 'hobbies', name: 'Hobbies', color: '#3E6E8E', subs: [
     { id: 'bead', name: 'Bead supplies' }, { id: 'art', name: 'Art supplies' },
@@ -39,12 +38,41 @@ const DEFAULT_CATEGORIES = [
   ]},
   { id: 'health', name: 'Supplements & meds', color: '#6E8F71', subs: [
     { id: 'minoxidil', name: 'Minoxidil' }, { id: 'omega3', name: 'Omega 3' },
+    { id: 'vb7hair', name: 'VB7 hair' }, { id: 'evion', name: 'Evion' },
+    { id: 'neem', name: 'Neem' }, { id: 'haldi', name: 'Haldi' }, { id: 'amruth', name: 'Amruth' },
   ]},
-  { id: 'necessities', name: 'Monthly necessities', color: '#B8862B', subs: [
+  { id: 'necessities', name: 'Monthly living expenses', color: '#B8862B', subs: [
     { id: 'investment', name: 'Investment' }, { id: 'rent', name: 'Rent' }, { id: 'utilities', name: 'Utilities' },
+    { id: 'cook', name: 'Cook' }, { id: 'maid', name: 'Maid' },
   ]},
   { id: 'groceries', name: 'Groceries', color: '#8A6E4B', subs: [
     { id: 'personal', name: 'Personal' }, { id: 'common', name: 'Common (flat)' },
+  ]},
+  { id: 'eatingout', name: 'Eating out', color: '#A65C3B', subs: [] },
+  { id: 'coffee', name: 'Coffee', color: '#6B4423', subs: [
+    { id: 'home', name: 'Home' }, { id: 'outside', name: 'Outside' },
+  ]},
+  { id: 'travel', name: 'Travel', color: '#4A7C82', subs: [
+    { id: 'office', name: 'Office' }, { id: 'flight', name: 'Flight' },
+    { id: 'train', name: 'Train' }, { id: 'personal', name: 'Personal' },
+  ]},
+  { id: 'upkeep', name: 'Maintenance', color: '#8C7853', subs: [
+    { id: 'chairfixing', name: 'Chair fixing' }, { id: 'haircut', name: 'Haircut' }, { id: 'waxing', name: 'Waxing' },
+  ]},
+  { id: 'gifts', name: 'Gifts for people', color: '#C77B8A', subs: [
+    { id: 'occasions', name: 'Occasions' }, { id: 'noreason', name: 'No reason gifting' },
+  ]},
+  { id: 'subscriptions', name: 'Subscriptions', color: '#5C6B73', subs: [
+    { id: 'youtube', name: 'YouTube' }, { id: 'googleone', name: 'Google One' },
+    { id: 'apple', name: 'Apple' }, { id: 'claude', name: 'Claude' },
+  ]},
+  { id: 'thrifting', name: 'Thrifting spendings', color: '#9C6B4F', subs: [
+    { id: 'nails', name: 'Nails' }, { id: 'bangles', name: 'Bangles' }, { id: 'belts', name: 'Belts' },
+    { id: 'scarfs', name: 'Scarfs' }, { id: 'earrings', name: 'Earrings' }, { id: 'rings', name: 'Rings' },
+    { id: 'bags', name: 'Bags' },
+  ]},
+  { id: 'delivery', name: 'Delivery charges', color: '#7A5C8A', subs: [
+    { id: 'food', name: 'Food' }, { id: 'groceries', name: 'Groceries' }, { id: 'porter', name: 'Porter' },
   ]},
 ];
 

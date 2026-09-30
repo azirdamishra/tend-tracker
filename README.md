@@ -12,6 +12,12 @@ You need [Node.js](https://nodejs.org) 18 or newer installed.
 
 ```bash
 npm install
+npm run dev:all      # one command — both the Vite frontend and the storage API
+```
+
+Or run them in separate terminals if you want their logs apart:
+
+```bash
 npm run dev          # terminal 1 — the Vite frontend, http://localhost:5173
 npm run dev:server   # terminal 2 — the storage API, http://localhost:3001
 ```
