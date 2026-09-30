@@ -1,0 +1,31 @@
+# Runs Tend (frontend + storage API, one process/one port) on boot, and
+# restarts it automatically if it ever crashes.
+#
+# Install on the Pi:
+#   sudo cp systemd/tend.service /etc/systemd/system/tend.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tend
+#
+# Check on it:
+#   systemctl status tend
+#   journalctl -u tend -f
+#
+# Edit User, WorkingDirectory and DATA_FILE below to match your Pi setup
+# before installing.
+
+[Unit]
+Description=Tend budget tracker
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/tend-tracker
+Environment=PORT=3001
+Environment=DATA_FILE=/home/pi/tend-data/tend-store.json
+ExecStart=/usr/bin/node server/dist/index.js
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

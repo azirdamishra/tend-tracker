@@ -1,0 +1,7 @@
+node_modules
+dist
+server/dist
+server/data
+
+# local-only Claude Code permission overrides, not shared project config
+.claude/settings.local.json
