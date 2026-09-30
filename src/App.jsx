@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { Plus, Trash2, Pencil, X, Wallet, Grid3x3, Target, Clock, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, Wallet, Grid3x3, Target, Clock, RotateCcw, Boxes, Search, Minus } from 'lucide-react';
 
 // ---------- design tokens ----------
 const C = {
@@ -48,8 +48,83 @@ const DEFAULT_CATEGORIES = [
   ]},
 ];
 
+export const DEFAULT_INVENTORY_CATEGORIES = [
+  { id: 'beauty', name: 'Beauty', color: '#B3616B' },
+  { id: 'kitchen', name: 'Kitchen', color: '#B8862B' },
+  { id: 'home', name: 'Home', color: '#6E8F71' },
+  { id: 'bathroom', name: 'Bathroom', color: '#3E6E8E' },
+];
+
+const CATEGORY_KEYWORDS = {
+  beauty: ['serum', 'moisturiser', 'moisturizer', 'cream', 'lotion', 'shampoo', 'conditioner', 'sunscreen', 'spf', 'lipstick', 'makeup', 'skincare', 'cleanser', 'toner', 'perfume', 'deodorant'],
+  kitchen: ['spice', 'masala', 'oil', 'rice', 'atta', 'flour', 'sauce', 'vinegar', 'tea', 'coffee', 'sugar', 'salt', 'container', 'cookware'],
+  home: ['cleaner', 'detergent', 'leather', 'balm', 'repellent', 'insect', 'mosquito', 'candle', 'bulb', 'battery', 'garbage bag', 'trash bag'],
+  bathroom: ['toothpaste', 'toothbrush', 'soap', 'shower', 'toilet', 'sponge'],
+};
+
 // ---------- utils ----------
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+export function normalize(s) { return (s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+
+// Small pure function, no ML: exact-match against known inventory first
+// (highest confidence — you've bought this before), then keyword dictionary
+// if unambiguous, otherwise leave it for a manual pass in the Unsorted section.
+export function suggestCategory(productName, inventory, keywordMap) {
+  const norm = normalize(productName);
+  if (!norm) return { categoryId: null, confidence: 'none' };
+
+  const existing = inventory.find((i) => i.normalizedName === norm);
+  if (existing) return { categoryId: existing.categoryId, confidence: 'known' };
+
+  const matches = new Set();
+  for (const [categoryId, keywords] of Object.entries(keywordMap)) {
+    if (keywords.some((kw) => norm.includes(kw))) matches.add(categoryId);
+  }
+  if (matches.size === 1) return { categoryId: [...matches][0], confidence: 'guess' };
+
+  return { categoryId: null, confidence: 'none' };
+}
+
+// Undoes a previously-applied inventory delta (an edit changed the product/
+// quantity, or the expense was deleted). Floors at 0 rather than going
+// negative — some of the stock may already have been used since.
+export function reverseInventoryDelta(inventory, itemId, qty) {
+  if (!itemId || !qty) return inventory;
+  return inventory.map((i) => (i.id === itemId ? { ...i, quantity: Math.max(0, i.quantity - qty), updatedAt: Date.now() } : i));
+}
+
+// Applies an "add to inventory" entry from the Add Expense form: matches by
+// normalizedName against existing stock (exact match only, see spec §5), or
+// creates a new item. Returns the updated list plus the item id/qty so the
+// caller can stash them on the expense for later edit/delete reversal.
+export function applyInventoryDraft(inventory, draft, amount) {
+  const trimmedName = (draft.name || '').trim();
+  const qty = Number(draft.quantity) || 0;
+  if (!trimmedName || qty <= 0) return { inventory, itemId: null, qtyAdded: 0 };
+
+  const norm = normalize(trimmedName);
+  const unitCost = amount > 0 ? amount / qty : 0;
+  const existing = inventory.find((i) => i.normalizedName === norm);
+
+  if (existing) {
+    const next = inventory.map((i) => (i.id === existing.id
+      ? { ...i, quantity: i.quantity + qty, unitCostLast: unitCost, updatedAt: Date.now(), categoryId: i.categoryId || draft.categoryId || null }
+      : i));
+    return { inventory: next, itemId: existing.id, qtyAdded: qty };
+  }
+
+  const item = {
+    id: uid(),
+    name: trimmedName,
+    normalizedName: norm,
+    categoryId: draft.categoryId || null,
+    quantity: qty,
+    unitCostLast: unitCost,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  return { inventory: [...inventory, item], itemId: item.id, qtyAdded: qty };
+}
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function fmtDate(dstr) {
   const d = new Date(dstr + 'T00:00:00');
@@ -80,7 +155,7 @@ function inPeriod(dateStr, period) {
 function money(n) { return Number(n || 0).toLocaleString('en-IN'); }
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Kalam:wght@400;700&display=swap');
   .tend-root { font-family:'Inter',sans-serif; color:${C.ink}; background:${C.paper}; min-height:100vh; }
   .tend-serif { font-family:'Fraunces', serif; }
   .tend-card { background:${C.card}; border:1px solid ${C.line}; border-radius:10px; padding:20px; }
@@ -96,6 +171,11 @@ const styles = `
   .tend-btn-ghost { background:transparent; color:${C.inkSoft}; border:1px solid ${C.line}; }
   .tend-iconbtn { background:none; border:none; cursor:pointer; color:${C.inkSoft}; display:flex; align-items:center; padding:4px; }
   .tend-select { border:1px solid ${C.line}; border-radius:8px; padding:8px 10px; font-size:13px; background:#fff; color:${C.ink}; }
+  .tend-handwrite { font-family:'Kalam', cursive; }
+  .tend-notebook-card {
+    background-color: #FBF8F0;
+    background-image: repeating-linear-gradient(180deg, transparent 0, transparent 27px, ${C.line} 27px, ${C.line} 28px);
+  }
   .tend-root ::-webkit-scrollbar { height:6px; width:6px; }
   .tend-chip:focus-visible, .tend-btn:focus-visible, .tend-tab:focus-visible, .tend-iconbtn:focus-visible { outline:2px solid ${C.plum}; outline-offset:2px; }
   @media (prefers-reduced-motion: reduce) { .tend-root * { transition:none !important; } }
@@ -410,7 +490,7 @@ function OverviewTab({ categories, expenses, currency }) {
 }
 
 // ---------- Add / Edit expense ----------
-function AddExpenseTab({ categories, currency, editingExpense, onSave, onCancelEdit, onAddCategory, onAddSub }) {
+function AddExpenseTab({ categories, currency, editingExpense, inventory, inventoryCategories, onSave, onCancelEdit, onAddCategory, onAddSub }) {
   const [date, setDate] = useState(todayStr());
   const [categoryId, setCategoryId] = useState(null);
   const [subId, setSubId] = useState(null);
@@ -418,6 +498,12 @@ function AddExpenseTab({ categories, currency, editingExpense, onSave, onCancelE
   const [tag, setTag] = useState('necessary');
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(false);
+
+  const [addToInventory, setAddToInventory] = useState(false);
+  const [invName, setInvName] = useState('');
+  const [invQty, setInvQty] = useState('1');
+  const [invCategoryId, setInvCategoryId] = useState(null);
+  const [invConfirmed, setInvConfirmed] = useState(false);
 
   useEffect(() => {
     if (editingExpense) {
@@ -427,13 +513,35 @@ function AddExpenseTab({ categories, currency, editingExpense, onSave, onCancelE
       setAmount(String(editingExpense.amount));
       setTag(editingExpense.tag);
       setNote(editingExpense.note || '');
+
+      if (editingExpense.inventoryItemId) {
+        const item = inventory.find((i) => i.id === editingExpense.inventoryItemId);
+        setAddToInventory(true);
+        setInvName(item ? item.name : '');
+        setInvQty(String(editingExpense.inventoryQtyAdded || 1));
+        setInvCategoryId(item ? item.categoryId : null);
+        setInvConfirmed(true);
+      }
     }
   }, [editingExpense]);
+
+  // Debounced auto-suggestion: only while the user hasn't manually tapped a
+  // chip for this product yet — once they confirm a pick, typing further
+  // (fixing a typo, etc.) doesn't fight with their choice.
+  useEffect(() => {
+    if (!addToInventory || invConfirmed) return;
+    const t = setTimeout(() => {
+      const { categoryId: suggested } = suggestCategory(invName, inventory, CATEGORY_KEYWORDS);
+      setInvCategoryId(suggested);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [invName, addToInventory, invConfirmed, inventory]);
 
   const selectedCategory = categories.find((c) => c.id === categoryId) || null;
 
   function reset() {
     setDate(todayStr()); setCategoryId(null); setSubId(null); setAmount(''); setTag('necessary'); setNote('');
+    setAddToInventory(false); setInvName(''); setInvQty('1'); setInvCategoryId(null); setInvConfirmed(false);
   }
 
   function handleSave() {
@@ -445,6 +553,9 @@ function AddExpenseTab({ categories, currency, editingExpense, onSave, onCancelE
       date, categoryId, subId: subId || null, amount: amt, tag, note: note.trim(),
       createdAt: editingExpense ? editingExpense.createdAt : Date.now(),
     };
+    if (addToInventory && invName.trim() && parseFloat(invQty) > 0) {
+      expense.inventoryDraft = { name: invName.trim(), categoryId: invCategoryId, quantity: parseFloat(invQty) };
+    }
     onSave(expense, !!editingExpense);
     if (editingExpense) {
       onCancelEdit();
@@ -551,6 +662,48 @@ function AddExpenseTab({ categories, currency, editingExpense, onSave, onCancelE
 
       <label className="tend-label">Note (optional)</label>
       <input type="text" className="tend-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. saw it on instagram" />
+
+      <label className="flex items-center gap-2" style={{ marginTop: 22, cursor: 'pointer', fontSize: 13, color: C.inkSoft }}>
+        <input type="checkbox" checked={addToInventory} onChange={(e) => setAddToInventory(e.target.checked)} />
+        Add to inventory?
+      </label>
+
+      {addToInventory && (
+        <div style={{ marginTop: 4 }}>
+          <label className="tend-label">Product name</label>
+          <input
+            className="tend-input"
+            placeholder="e.g. Neutrogena moisturiser"
+            value={invName}
+            onChange={(e) => { setInvName(e.target.value); setInvConfirmed(false); }}
+          />
+
+          <label className="tend-label">Quantity</label>
+          <input type="number" step="1" min="1" className="tend-input" style={{ width: 100 }} value={invQty} onChange={(e) => setInvQty(e.target.value)} />
+
+          <label className="tend-label">Category</label>
+          <div className="flex flex-wrap gap-2">
+            {inventoryCategories.map((c) => {
+              const isConfirmed = invConfirmed && invCategoryId === c.id;
+              const isTentative = !invConfirmed && invCategoryId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  className="tend-chip"
+                  onClick={() => { setInvCategoryId(c.id); setInvConfirmed(true); }}
+                  style={isConfirmed
+                    ? { background: c.color, borderColor: c.color, color: '#fff' }
+                    : isTentative
+                      ? { background: '#fff', borderColor: c.color, color: c.color }
+                      : undefined}
+                >
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-3" style={{ marginTop: 22 }}>
         <button className="tend-btn tend-btn-primary" disabled={!canSave} onClick={handleSave}>
@@ -805,12 +958,189 @@ function HistoryTab({ categories, expenses, currency, onEdit, onDelete }) {
   );
 }
 
+// ---------- Inventory categories manager (mirrors CategoriesTab, flat — no subs) ----------
+function InventoryCategoriesManager({ categories, onChange, onAddCategory }) {
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState(PALETTE[0]);
+
+  function updateCategory(id, patch) { onChange(categories.map((c) => (c.id === id ? { ...c, ...patch } : c))); }
+  function deleteCategory(id) { onChange(categories.filter((c) => c.id !== id)); }
+  function addCategory() {
+    if (!newName.trim()) return;
+    onAddCategory(newName, newColor);
+    setNewName('');
+    setNewColor(PALETTE[categories.length % PALETTE.length]);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {categories.map((c) => (
+        <div key={c.id} className="tend-card">
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1">
+                {PALETTE.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => updateCategory(c.id, { color: p })}
+                    aria-label={`Set color ${p}`}
+                    style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? `2px solid ${C.ink}` : '1px solid transparent', cursor: 'pointer' }}
+                  />
+                ))}
+              </div>
+              <input
+                value={c.name}
+                onChange={(e) => updateCategory(c.id, { name: e.target.value })}
+                style={{ fontWeight: 600, fontSize: 16, border: 'none', background: 'transparent', outline: 'none' }}
+              />
+            </div>
+            <ConfirmDelete onConfirm={() => deleteCategory(c.id)} />
+          </div>
+        </div>
+      ))}
+
+      <div className="tend-card">
+        <div style={{ fontWeight: 600, marginBottom: 12 }}>New category</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input className="tend-input" style={{ width: 200 }} placeholder="e.g. Pantry" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }} />
+          <div className="flex gap-1">
+            {PALETTE.map((p) => (
+              <button key={p} onClick={() => setNewColor(p)} style={{ width: 18, height: 18, borderRadius: 4, background: p, border: newColor === p ? `2px solid ${C.ink}` : '1px solid transparent', cursor: 'pointer' }} />
+            ))}
+          </div>
+          <button className="tend-btn tend-btn-primary" onClick={addCategory}><Plus size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Add category</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Inventory ----------
+function InventoryTab({ inventory, inventoryCategories, currency, onChangeInventory, onChangeInventoryCategories, onAddInventoryCategory }) {
+  const [search, setSearch] = useState('');
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+
+  const filtered = useMemo(() => {
+    const norm = normalize(search);
+    if (!norm) return inventory;
+    return inventory.filter((i) => i.normalizedName.includes(norm));
+  }, [inventory, search]);
+
+  const unsorted = filtered.filter((i) => !i.categoryId);
+
+  function updateItem(id, patch) {
+    onChangeInventory(inventory.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: Date.now() } : i)));
+  }
+  function step(id, delta) {
+    const item = inventory.find((i) => i.id === id);
+    if (!item) return;
+    updateItem(id, { quantity: Math.max(0, item.quantity + delta) });
+  }
+  function deleteItem(id) { onChangeInventory(inventory.filter((i) => i.id !== id)); }
+  function assignCategory(id, categoryId) { updateItem(id, { categoryId }); }
+
+  function ItemRow({ item }) {
+    const outOfStock = item.quantity <= 0;
+    return (
+      <div className="flex justify-between items-center" style={{ padding: '10px 0', borderBottom: `1px solid ${C.line}`, opacity: outOfStock ? 0.55 : 1 }}>
+        <div>
+          <div className="tend-handwrite" style={{ fontSize: 17 }}>{item.name}</div>
+          <div style={{ fontSize: 12, color: C.inkSoft }}>
+            {outOfStock ? 'Out of stock' : `${item.quantity} in stock`}
+            {item.unitCostLast > 0 && ` · last paid ${currency}${money(item.unitCostLast)}`}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button className="tend-iconbtn" aria-label="Decrease quantity" onClick={() => step(item.id, -1)}><Minus size={14} /></button>
+            <span style={{ minWidth: 20, textAlign: 'center', fontSize: 14, fontWeight: 600 }}>{item.quantity}</span>
+            <button className="tend-iconbtn" aria-label="Increase quantity" onClick={() => step(item.id, 1)}><Plus size={14} /></button>
+          </div>
+          <ConfirmDelete onConfirm={() => deleteItem(item.id)} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div className="flex items-center gap-2 tend-card" style={{ padding: '10px 14px' }}>
+        <Search size={15} style={{ color: C.inkSoft, flexShrink: 0 }} />
+        <input
+          className="tend-input"
+          style={{ border: 'none', padding: '2px 0' }}
+          placeholder="Do I already have this?"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {inventory.length === 0 && (
+        <EmptyState text="Toggle 'Add to inventory?' next time you log an expense for a stocked-up good, and it'll show up here." />
+      )}
+
+      {unsorted.length > 0 && (
+        <div className="tend-card tend-notebook-card">
+          <div className="tend-handwrite" style={{ fontSize: 20, marginBottom: 12 }}>Unsorted</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {unsorted.map((item) => (
+              <div key={item.id}>
+                <div className="tend-handwrite" style={{ fontSize: 17, marginBottom: 6 }}>{item.name}</div>
+                <div className="flex flex-wrap gap-2">
+                  {inventoryCategories.map((c) => (
+                    <button
+                      key={c.id}
+                      className="tend-chip"
+                      onClick={() => assignCategory(item.id, c.id)}
+                      style={{ borderColor: c.color, color: c.color }}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {inventoryCategories.map((cat) => {
+        const items = filtered.filter((i) => i.categoryId === cat.id);
+        if (items.length === 0) return null;
+        return (
+          <div key={cat.id} className="tend-card tend-notebook-card">
+            <div className="flex items-center gap-2 tend-handwrite" style={{ fontSize: 20, marginBottom: 4 }}>
+              <ColorDot color={cat.color} />{cat.name}
+            </div>
+            <div>
+              {items.map((item) => <ItemRow key={item.id} item={item} />)}
+            </div>
+          </div>
+        );
+      })}
+
+      <div>
+        <button className="tend-iconbtn" style={{ fontSize: 13, gap: 6 }} onClick={() => setShowCategoryManager((v) => !v)}>
+          <Grid3x3 size={13} /> {showCategoryManager ? 'Hide' : 'Manage'} inventory categories
+        </button>
+        {showCategoryManager && (
+          <div style={{ marginTop: 12 }}>
+            <InventoryCategoriesManager categories={inventoryCategories} onChange={onChangeInventoryCategories} onAddCategory={onAddInventoryCategory} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- App ----------
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState(DEFAULT_INVENTORY_CATEGORIES);
+  const [inventory, setInventory] = useState([]);
   const [currency, setCurrency] = useState('₹');
   const [tab, setTab] = useState('overview');
   const [editingId, setEditingId] = useState(null);
@@ -840,14 +1170,17 @@ export default function App() {
     let mounted = true;
     (async () => {
       try {
-        const [c, e, g, cur] = await Promise.all([
+        const [c, e, g, cur, ic, inv] = await Promise.all([
           safeGet('categories'), safeGet('expenses'), safeGet('goals'), safeGet('currency'),
+          safeGet('inventoryCategories'), safeGet('inventory'),
         ]);
         if (!mounted) return;
         if (c) setCategories(c); else await safeSet('categories', DEFAULT_CATEGORIES);
         if (e) setExpenses(e);
         if (g) setGoals(g);
         if (cur) setCurrency(cur);
+        if (ic) setInventoryCategories(ic); else await safeSet('inventoryCategories', DEFAULT_INVENTORY_CATEGORIES);
+        if (inv) setInventory(inv);
       } catch (err) {
         console.error(err);
         if (mounted) setLoadError(true);
@@ -860,6 +1193,16 @@ export default function App() {
   function updateCategories(next) { setCategories(next); safeSet('categories', next); }
   function updateGoals(next) { setGoals(next); safeSet('goals', next); }
   function updateCurrency(next) { setCurrency(next); safeSet('currency', next); }
+  function updateInventory(next) { setInventory(next); safeSet('inventory', next); }
+  function updateInventoryCategories(next) { setInventoryCategories(next); safeSet('inventoryCategories', next); }
+
+  function handleAddInventoryCategory(name, color) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return null;
+    const cat = { id: uid(), name: trimmed, color: color || PALETTE[inventoryCategories.length % PALETTE.length] };
+    updateInventoryCategories([...inventoryCategories, cat]);
+    return cat.id;
+  }
 
   // Shared by the Categories tab's own "new category"/"add subcategory" form
   // and the Add Expense tab's inline quick-add chips, so both entry points
@@ -881,25 +1224,58 @@ export default function App() {
   }
 
   function handleSaveExpense(expense, isEdit) {
-    const next = isEdit ? expenses.map((e) => (e.id === expense.id ? expense : e)) : [...expenses, expense];
-    setExpenses(next);
-    safeSet('expenses', next);
+    const { inventoryDraft, ...expenseBase } = expense;
+    let nextInventory = inventory;
+
+    // Editing an entry that previously touched inventory: undo its old delta
+    // first so counts don't drift when the product/quantity/toggle changes.
+    if (isEdit) {
+      const prev = expenses.find((e) => e.id === expense.id);
+      if (prev && prev.inventoryItemId) {
+        nextInventory = reverseInventoryDelta(nextInventory, prev.inventoryItemId, prev.inventoryQtyAdded);
+      }
+    }
+
+    const finalExpense = { ...expenseBase, inventoryItemId: null, inventoryQtyAdded: null };
+    if (inventoryDraft) {
+      const { inventory: updatedInventory, itemId, qtyAdded } = applyInventoryDraft(nextInventory, inventoryDraft, expenseBase.amount);
+      nextInventory = updatedInventory;
+      finalExpense.inventoryItemId = itemId;
+      finalExpense.inventoryQtyAdded = qtyAdded;
+    }
+
+    const nextExpenses = isEdit ? expenses.map((e) => (e.id === finalExpense.id ? finalExpense : e)) : [...expenses, finalExpense];
+    setExpenses(nextExpenses);
+    safeSet('expenses', nextExpenses);
+    if (nextInventory !== inventory) {
+      setInventory(nextInventory);
+      safeSet('inventory', nextInventory);
+    }
   }
   function handleDeleteExpense(id) {
+    const target = expenses.find((e) => e.id === id);
     const next = expenses.filter((e) => e.id !== id);
     setExpenses(next);
     safeSet('expenses', next);
+    if (target && target.inventoryItemId) {
+      const nextInventory = reverseInventoryDelta(inventory, target.inventoryItemId, target.inventoryQtyAdded);
+      setInventory(nextInventory);
+      safeSet('inventory', nextInventory);
+    }
   }
   function handleEditRequest(id) { setEditingId(id); setTab('add'); }
   function handleCancelEdit() { setEditingId(null); }
 
   async function handleReset() {
-    await Promise.all(['categories', 'expenses', 'goals', 'currency'].map((k) => window.storage.delete(k, false).catch(() => {})));
+    await Promise.all(['categories', 'expenses', 'goals', 'currency', 'inventoryCategories', 'inventory'].map((k) => window.storage.delete(k, false).catch(() => {})));
     setCategories(DEFAULT_CATEGORIES);
     setExpenses([]);
     setGoals([]);
     setCurrency('₹');
+    setInventoryCategories(DEFAULT_INVENTORY_CATEGORIES);
+    setInventory([]);
     await safeSet('categories', DEFAULT_CATEGORIES);
+    await safeSet('inventoryCategories', DEFAULT_INVENTORY_CATEGORIES);
     setResetConfirm(false);
   }
 
@@ -910,6 +1286,7 @@ export default function App() {
     { id: 'add', label: editingExpense ? 'Edit' : 'Add', icon: Plus },
     { id: 'categories', label: 'Categories', icon: Grid3x3 },
     { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'inventory', label: 'Inventory', icon: Boxes },
     { id: 'history', label: 'History', icon: Clock },
   ];
 
@@ -981,6 +1358,8 @@ export default function App() {
             categories={categories}
             currency={currency}
             editingExpense={editingExpense}
+            inventory={inventory}
+            inventoryCategories={inventoryCategories}
             onSave={handleSaveExpense}
             onCancelEdit={handleCancelEdit}
             onAddCategory={handleAddCategory}
@@ -997,6 +1376,16 @@ export default function App() {
           />
         )}
         {tab === 'goals' && <GoalsTab goals={goals} onChange={updateGoals} currency={currency} />}
+        {tab === 'inventory' && (
+          <InventoryTab
+            inventory={inventory}
+            inventoryCategories={inventoryCategories}
+            currency={currency}
+            onChangeInventory={updateInventory}
+            onChangeInventoryCategories={updateInventoryCategories}
+            onAddInventoryCategory={handleAddInventoryCategory}
+          />
+        )}
         {tab === 'history' && (
           <HistoryTab categories={categories} expenses={expenses} currency={currency} onEdit={handleEditRequest} onDelete={handleDeleteExpense} />
         )}
@@ -1009,7 +1398,7 @@ export default function App() {
             <div className="tend-card" style={{ maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Reset all data?</div>
               <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 18 }}>
-                This clears every expense, category and goal saved here. This can't be undone.
+                This clears every expense, category, goal and inventory item saved here. This can't be undone.
               </div>
               <div className="flex gap-2 justify-end">
                 <button className="tend-btn tend-btn-ghost" onClick={() => setResetConfirm(false)}>Cancel</button>
