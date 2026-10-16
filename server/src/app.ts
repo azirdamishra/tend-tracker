@@ -7,12 +7,14 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { passphraseGate } from './auth.js';
 import { storageRouter } from './routes/storage.js';
 
 const distDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
 
 export const app = express();
 
+app.use(passphraseGate);
 app.use(express.json());
 app.use('/api/storage', storageRouter);
 

@@ -23,6 +23,10 @@ User=pi
 WorkingDirectory=/home/pi/tend-tracker
 Environment=PORT=3001
 Environment=DATA_FILE=/home/pi/tend-data/tend-store.json
+# Uncomment and set your own value to require a shared passphrase before
+# Tend loads (protects against anyone else on your WiFi opening it).
+# Don't commit your real passphrase to git.
+# Environment=TEND_PASSPHRASE=
 ExecStart=/usr/bin/node server/dist/index.js
 Restart=on-failure
 RestartSec=2

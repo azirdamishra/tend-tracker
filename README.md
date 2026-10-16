@@ -56,9 +56,16 @@ another machine on the network/Tailscale). Data is written to
 point somewhere else (e.g. outside the repo checkout, for easier backups),
 and `PORT` to change the port.
 
+Set `TEND_PASSPHRASE` to require a shared passphrase before Tend loads —
+worth doing if other people are on the same WiFi/network as the server.
+Leave it unset to skip the gate entirely (the default, and what local dev
+uses). When set, the browser's native login prompt appears; the username
+field is ignored, put the passphrase in the password field.
+
 ### Running it as a service on the Pi
 
 See [`systemd/tend.service`](systemd/tend.service) — copy it to
 `/etc/systemd/system/`, edit the `User`/`WorkingDirectory`/`DATA_FILE`
-values for your setup, then `sudo systemctl enable --now tend` so it starts
-on boot and restarts itself if it ever crashes.
+values for your setup (and uncomment `TEND_PASSPHRASE` if you want the
+gate above), then `sudo systemctl enable --now tend` so it starts on boot
+and restarts itself if it ever crashes.
