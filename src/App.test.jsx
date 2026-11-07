@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyInventoryDraft, normalize, reverseInventoryDelta, suggestCategory } from './App.jsx';
+import { applyInventoryDraft, applyInventoryDrafts, normalize, reverseInventoryDelta, reverseInventoryLinks, suggestCategory } from './App.jsx';
 
 const KEYWORDS = {
   beauty: ['moisturiser', 'moisturizer', 'shampoo'],
@@ -76,5 +76,51 @@ describe('reverseInventoryDelta', () => {
     const inventory = [{ id: 'abc', quantity: 2 }];
     expect(reverseInventoryDelta(inventory, null, 5)).toBe(inventory);
     expect(reverseInventoryDelta(inventory, 'abc', 0)).toBe(inventory);
+  });
+});
+
+describe('applyInventoryDrafts', () => {
+  it('applies several drafts (e.g. from a scanned receipt) and collects a link per item', () => {
+    const { inventory, links } = applyInventoryDrafts([], [
+      { name: 'Milk', categoryId: 'kitchen', quantity: 1, price: 4 },
+      { name: 'Eggs', categoryId: 'kitchen', quantity: 1, price: 3 },
+    ]);
+    expect(inventory).toHaveLength(2);
+    expect(inventory.map((i) => i.name)).toEqual(['Milk', 'Eggs']);
+    expect(links).toEqual([
+      { inventoryItemId: inventory[0].id, qtyAdded: 1 },
+      { inventoryItemId: inventory[1].id, qtyAdded: 1 },
+    ]);
+  });
+
+  it('increments an existing item across drafts the same way a single draft would', () => {
+    const existing = [{ id: 'abc', name: 'Rice', normalizedName: 'rice', categoryId: 'kitchen', quantity: 2, unitCostLast: 100, createdAt: 1, updatedAt: 1 }];
+    const { inventory, links } = applyInventoryDrafts(existing, [{ name: 'Rice', categoryId: 'kitchen', quantity: 3, price: 150 }]);
+    expect(inventory[0]).toMatchObject({ id: 'abc', quantity: 5, unitCostLast: 50 });
+    expect(links).toEqual([{ inventoryItemId: 'abc', qtyAdded: 3 }]);
+  });
+
+  it('skips drafts with a blank name or non-positive quantity, producing no link for them', () => {
+    const { inventory, links } = applyInventoryDrafts([], [
+      { name: '  ', categoryId: null, quantity: 1, price: 5 },
+      { name: 'Soap', categoryId: null, quantity: 0, price: 5 },
+    ]);
+    expect(inventory).toEqual([]);
+    expect(links).toEqual([]);
+  });
+});
+
+describe('reverseInventoryLinks', () => {
+  it('reverses every link in the array', () => {
+    const inventory = [{ id: 'a', quantity: 5, updatedAt: 1 }, { id: 'b', quantity: 3, updatedAt: 1 }];
+    const result = reverseInventoryLinks(inventory, [{ inventoryItemId: 'a', qtyAdded: 2 }, { inventoryItemId: 'b', qtyAdded: 3 }]);
+    expect(result.find((i) => i.id === 'a').quantity).toBe(3);
+    expect(result.find((i) => i.id === 'b').quantity).toBe(0);
+  });
+
+  it('is a no-op for an empty or missing links array', () => {
+    const inventory = [{ id: 'a', quantity: 5 }];
+    expect(reverseInventoryLinks(inventory, [])).toBe(inventory);
+    expect(reverseInventoryLinks(inventory, undefined)).toBe(inventory);
   });
 });

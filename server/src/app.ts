@@ -9,12 +9,19 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { passphraseGate } from './auth.js';
 import { storageRouter } from './routes/storage.js';
+import { receiptRouter } from './routes/receipt.js';
 
 const distDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
 
 export const app = express();
 
 app.use(passphraseGate);
+
+// Receipt photos are much bigger than anything else this server handles, so
+// this route gets its own raised body-size limit rather than raising it
+// globally for the tiny JSON-string storage API.
+app.use('/api/receipt', express.json({ limit: '40mb' }), receiptRouter);
+
 app.use(express.json());
 app.use('/api/storage', storageRouter);
 

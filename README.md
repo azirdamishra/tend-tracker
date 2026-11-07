@@ -8,7 +8,10 @@ and is the same no matter which browser or device you open Tend from.
 
 ## Run it locally
 
-You need [Node.js](https://nodejs.org) 18 or newer installed.
+You need [Node.js](https://nodejs.org) 18 or newer installed, plus the
+`tesseract` OCR binary for the receipt-scanning feature (`brew install
+tesseract` on a Mac, `sudo apt install tesseract-ocr` on Debian/Ubuntu/Pi OS).
+Everything else works without it — only "Scan receipt" needs it.
 
 ```bash
 npm install
@@ -41,6 +44,11 @@ so the two behave as one app. Data is written to `server/data/tend-store.json`
 - The server lives in `server/src/` — `store.ts` is the JSON-file-backed
   key/value store, `routes/storage.ts` is the HTTP layer (Zod-validated),
   `app.ts` wires it together with serving the built frontend.
+- Receipt scanning (`src/ReceiptCapture.jsx`) posts photos to
+  `routes/receipt.ts`, which shells out to the local `tesseract` binary via
+  `ocr.ts` and parses its output with `receiptParser.ts`. Everything runs on
+  the server itself — no outbound API calls, no API key, nothing written to
+  disk beyond the usual expense/inventory data.
 - `npm run typecheck` and `npm test` (vitest) cover the server + the shim.
 
 ## Build & run for real (e.g. the Raspberry Pi)
@@ -61,6 +69,9 @@ worth doing if other people are on the same WiFi/network as the server.
 Leave it unset to skip the gate entirely (the default, and what local dev
 uses). When set, the browser's native login prompt appears; the username
 field is ignored, put the passphrase in the password field.
+
+Also run `sudo apt install tesseract-ocr` on the Pi (once, outside git) so
+receipt scanning works — everything else in Tend works without it.
 
 ### Running it as a service on the Pi
 

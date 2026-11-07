@@ -4,6 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Plus, Trash2, Pencil, X, Wallet, Grid3x3, Target, Clock, RotateCcw, Boxes, Search, Minus } from 'lucide-react';
+import { ReceiptCapture } from './ReceiptCapture.jsx';
 
 // ---------- design tokens ----------
 const C = {
@@ -152,6 +153,27 @@ export function applyInventoryDraft(inventory, draft, amount) {
     updatedAt: Date.now(),
   };
   return { inventory: [...inventory, item], itemId: item.id, qtyAdded: qty };
+}
+
+// Array form of applyInventoryDraft, for a scanned receipt that can add
+// several items to inventory from one expense. Folds each draft through
+// the existing single-item logic (using that item's own price, not the
+// receipt's total) and collects the links the expense needs to store for
+// later edit/delete reversal.
+export function applyInventoryDrafts(inventory, drafts) {
+  let nextInventory = inventory;
+  const links = [];
+  for (const draft of drafts) {
+    const { inventory: updated, itemId, qtyAdded } = applyInventoryDraft(nextInventory, draft, draft.price);
+    nextInventory = updated;
+    if (itemId) links.push({ inventoryItemId: itemId, qtyAdded });
+  }
+  return { inventory: nextInventory, links };
+}
+
+// Array form of reverseInventoryDelta, for expenses holding multiple links.
+export function reverseInventoryLinks(inventory, links) {
+  return (links || []).reduce((inv, link) => reverseInventoryDelta(inv, link.inventoryItemId, link.qtyAdded), inventory);
 }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function fmtDate(dstr) {
@@ -519,6 +541,7 @@ function OverviewTab({ categories, expenses, currency }) {
 
 // ---------- Add / Edit expense ----------
 function AddExpenseTab({ categories, currency, editingExpense, inventory, inventoryCategories, onSave, onCancelEdit, onAddCategory, onAddSub }) {
+  const [mode, setMode] = useState('manual'); // 'manual' | 'photo' — editing an existing expense always forces manual
   const [date, setDate] = useState(todayStr());
   const [categoryId, setCategoryId] = useState(null);
   const [subId, setSubId] = useState(null);
@@ -596,7 +619,26 @@ function AddExpenseTab({ categories, currency, editingExpense, inventory, invent
 
   const canSave = categoryId && (subId || (selectedCategory && selectedCategory.subs.length === 0)) && parseFloat(amount) > 0;
 
+  if (mode === 'photo' && !editingExpense) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Segmented value={mode} onChange={setMode} options={[{ value: 'manual', label: 'Manual' }, { value: 'photo', label: 'From photo' }]} />
+        <ReceiptCapture
+          categories={categories}
+          inventoryCategories={inventoryCategories}
+          currency={currency}
+          defaultCategoryId={(categories.find((c) => c.id === 'groceries') || categories[0] || {}).id || null}
+          onSave={onSave}
+        />
+      </div>
+    );
+  }
+
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {!editingExpense && (
+        <Segmented value={mode} onChange={setMode} options={[{ value: 'manual', label: 'Manual' }, { value: 'photo', label: 'From photo' }]} />
+      )}
     <div className="tend-card" style={{ maxWidth: 480 }}>
       {editingExpense && (
         <div className="flex justify-between items-center" style={{ marginBottom: 16, padding: '8px 12px', background: C.plumTint, borderRadius: 8, fontSize: 13, color: C.plum }}>
@@ -739,6 +781,7 @@ function AddExpenseTab({ categories, currency, editingExpense, inventory, invent
         </button>
         {saved && <span style={{ color: C.sage, fontSize: 13, fontWeight: 600 }}>Saved ✓</span>}
       </div>
+    </div>
     </div>
   );
 }
@@ -945,6 +988,36 @@ function GoalsTab({ goals, onChange, currency }) {
 }
 
 // ---------- History ----------
+// A history row for an expense that also recorded a scanned receipt's line
+// items (e.items) — collapsed by default so the normal case (no items)
+// doesn't change the usual row height.
+function ExpenseItemsToggle({ items, currency }) {
+  const [open, setOpen] = useState(false);
+  if (!items || items.length === 0) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="tend-iconbtn"
+        style={{ fontSize: 12, padding: 0, color: C.inkSoft }}
+      >
+        {open ? 'Hide' : `${items.length} item${items.length === 1 ? '' : 's'}`}
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {items.map((it, i) => (
+            <div key={i} className="flex justify-between" style={{ fontSize: 12, color: C.inkSoft }}>
+              <span>{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
+              <span>{currency}{money(it.price)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HistoryTab({ categories, expenses, currency, onEdit, onDelete }) {
   const [filterCat, setFilterCat] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
@@ -993,6 +1066,7 @@ function HistoryTab({ categories, expenses, currency, onEdit, onDelete }) {
                         {sub ? sub.name : 'Other'} <span style={{ color: C.inkSoft, fontSize: 12 }}>· {cat ? cat.name : 'Deleted category'}</span>
                       </div>
                       {e.note && <div style={{ fontSize: 12, fontStyle: 'italic', color: C.inkSoft }}>{e.note}</div>}
+                      <ExpenseItemsToggle items={e.items} currency={currency} />
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1276,21 +1350,36 @@ export default function App() {
     return sub.id;
   }
 
+  // Undoes whichever shape of inventory link an expense was carrying — the
+  // legacy singular pair (still on old rows) or the newer array (every
+  // expense going forward, including single-item ones saved after this).
+  function reverseExpenseInventory(nextInventory, expense) {
+    if (!expense) return nextInventory;
+    if (expense.inventoryLinks && expense.inventoryLinks.length) {
+      return reverseInventoryLinks(nextInventory, expense.inventoryLinks);
+    }
+    if (expense.inventoryItemId) {
+      return reverseInventoryDelta(nextInventory, expense.inventoryItemId, expense.inventoryQtyAdded);
+    }
+    return nextInventory;
+  }
+
   function handleSaveExpense(expense, isEdit) {
-    const { inventoryDraft, ...expenseBase } = expense;
+    const { inventoryDraft, inventoryDrafts, ...expenseBase } = expense;
     let nextInventory = inventory;
 
     // Editing an entry that previously touched inventory: undo its old delta
     // first so counts don't drift when the product/quantity/toggle changes.
     if (isEdit) {
-      const prev = expenses.find((e) => e.id === expense.id);
-      if (prev && prev.inventoryItemId) {
-        nextInventory = reverseInventoryDelta(nextInventory, prev.inventoryItemId, prev.inventoryQtyAdded);
-      }
+      nextInventory = reverseExpenseInventory(nextInventory, expenses.find((e) => e.id === expense.id));
     }
 
-    const finalExpense = { ...expenseBase, inventoryItemId: null, inventoryQtyAdded: null };
-    if (inventoryDraft) {
+    const finalExpense = { ...expenseBase, inventoryItemId: null, inventoryQtyAdded: null, inventoryLinks: [] };
+    if (inventoryDrafts && inventoryDrafts.length) {
+      const { inventory: updatedInventory, links } = applyInventoryDrafts(nextInventory, inventoryDrafts);
+      nextInventory = updatedInventory;
+      finalExpense.inventoryLinks = links;
+    } else if (inventoryDraft) {
       const { inventory: updatedInventory, itemId, qtyAdded } = applyInventoryDraft(nextInventory, inventoryDraft, expenseBase.amount);
       nextInventory = updatedInventory;
       finalExpense.inventoryItemId = itemId;
@@ -1310,8 +1399,8 @@ export default function App() {
     const next = expenses.filter((e) => e.id !== id);
     setExpenses(next);
     safeSet('expenses', next);
-    if (target && target.inventoryItemId) {
-      const nextInventory = reverseInventoryDelta(inventory, target.inventoryItemId, target.inventoryQtyAdded);
+    const nextInventory = reverseExpenseInventory(inventory, target);
+    if (nextInventory !== inventory) {
       setInventory(nextInventory);
       safeSet('inventory', nextInventory);
     }

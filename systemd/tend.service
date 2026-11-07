@@ -15,7 +15,18 @@
 
 [Unit]
 Description=Tend budget tracker
-After=network.target
+# Wait for a real IP, not just the network interface existing — on a cold
+# boot after a power outage, Wi-Fi association + DHCP can take longer than
+# network.target waits for, which previously left Tend trying to bind/serve
+# before the network was actually usable.
+After=network-online.target
+Wants=network-online.target
+# Tolerate a rough boot (slow SD card, data dir not mounted yet) without
+# giving up instantly — but still give up eventually rather than retrying
+# forever if the cause turns out to be permanent (bad config, corrupt
+# file): up to 10 restarts within a 10-minute window.
+StartLimitIntervalSec=600
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -28,7 +39,11 @@ Environment=DATA_FILE=/home/pi/tend-data/tend-store.json
 # Don't commit your real passphrase to git.
 # Environment=TEND_PASSPHRASE=
 ExecStart=/usr/bin/node server/dist/index.js
-Restart=on-failure
+# always (not just on-failure) + the StartLimit* above: survive more than
+# systemd's default 5-tries-in-10s burst limit, which otherwise leaves the
+# service permanently stopped if it fails a few times right after a rough
+# boot (e.g. data dir not mounted yet).
+Restart=always
 RestartSec=2
 
 [Install]
